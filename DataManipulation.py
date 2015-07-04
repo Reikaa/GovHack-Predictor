@@ -2,6 +2,7 @@ __author__ = 'Thush'
 
 import csv
 import pickle
+import numpy as np
 
 class DataManipulation(object):
 
@@ -90,21 +91,29 @@ class DataManipulation(object):
                 if len(output)<5 or len(input)<9:
                     print 'problem'
 
-                if i<len(rows[k])-t-s-10:
+                num_valid = 5
+                num_test = 10
+                if i<len(rows[k])-t-s-(num_valid+num_test):
                     all_inputs.append(input)
-                elif i<len(rows[k])-t-s-5:
+                elif i<len(rows[k])-t-s-num_test:
                     all_valid_ins.append(input)
                 else:
                     all_test_ins.append(input)
 
-                if i<len(rows[k])-t-s-15:
+                if i<len(rows[k])-t-s-(num_valid+num_test):
                     all_outputs.append(output)
-                elif i<len(rows[k])-t-s-10:
+                elif i<len(rows[k])-t-s-num_test:
                     all_valid_outs.append(output)
                 else:
                     all_test_outs.append(output)
 
             self.max_pat.append([all_inputs[-1][0],all_inputs[-1][1],all_inputs[-1][2],max_patients])
+        print np.asarray(all_inputs).shape
+        print np.asarray(all_outputs).shape
+        print np.asarray(all_valid_ins).shape
+        print np.asarray(all_valid_outs).shape
+        print np.asarray(all_test_ins).shape
+        print np.asarray(all_test_outs).shape
 
         return [all_inputs,all_outputs,all_valid_ins,all_valid_outs,all_test_ins,all_test_outs]
 

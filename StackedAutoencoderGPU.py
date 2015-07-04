@@ -21,7 +21,7 @@ import time
 import sys,getopt
 
 from utils import tile_raster_images
-
+import csv
 try:
     import PIL.Image as Image
 except ImportError:
@@ -109,17 +109,17 @@ class StackedAutoencoder(object):
         self.sa_activations_train.append(a2_train)
         self.sa_activations_test.append(a2_test)
 
-        self.softmax = OutputLayer(n_inputs=self.h_sizes[-1], n_outputs=self.o_size,
+        self.outLayer = OutputLayer(n_inputs=self.h_sizes[-1], n_outputs=self.o_size,
                                          x_train=self.sa_activations_train[-1], x_test = self.sa_activations_test[-1],
                                          y=self.y, dropout=self.dropout, dropout_rate=self.drop_rates[-1])
         self.lam_fine_tune = T.scalar('lam')
-        self.fine_cost = self.softmax.get_cost(self.lam_fine_tune,cost_fn=self.cost_fn_names[1])
+        self.fine_cost = self.outLayer.get_cost(self.lam_fine_tune,cost_fn=self.cost_fn_names[1])
 
-        self.thetas.extend(self.softmax.theta)
+        self.thetas.extend(self.outLayer.theta)
 
         #measure test performance
-        self.error = self.softmax.get_error(self.y)
-        self.predict = self.softmax.get_output()
+        self.error = self.outLayer.get_error(self.y)
+        self.predict = self.outLayer.get_output()
 
 
     def load_max_pat(self,file_path):
@@ -131,7 +131,8 @@ class StackedAutoencoder(object):
     def load_pred_ins(self,file_path):
         f = open(file_path, 'rb')
         pred_ins = cPickle.load(f)
-        return pred_ins
+
+        return shared(value=np.asarray(pred_ins,dtype=config.floatX),borrow=True)
 
     def load_cancer_data(self,file_path):
         f = open(file_path,'rb')
@@ -283,7 +284,7 @@ class StackedAutoencoder(object):
         #########################################################################
         patience = 10 * n_train_batches # look at this many examples
         patience_increase = 2.
-        improvement_threshold = 1.25
+        improvement_threshold = 1.005
         #validation frequency - the number of minibatches to go through before checking validation set
         validation_freq = min(n_train_batches,patience/2)
 
@@ -332,8 +333,8 @@ class StackedAutoencoder(object):
 
     def get_correct_max_pat(self,x,max_pat):
         for p in max_pat:
-            if p[0]==x[0] and p[1]==x[1]:
-                return p[2]
+            if p[0]==x[0] and p[1]==x[1] and p[2]==x[2]:
+                return p[3]
 
         return -1
 
@@ -382,9 +383,9 @@ class StackedAutoencoder(object):
 
         print 'Test Error %f ' % np.mean(e)
 
-    def predict(self,pred_ins):
-        index = T.lscalar('index')
+    def predict_val(self,pred_ins):
 
+        print 'Predicting ....'
         #no update parameters, so this just returns the values it calculate
         #without objetvie function minimization
         pred_fn = function(inputs=[], outputs=[self.predict], givens={
@@ -400,22 +401,36 @@ class StackedAutoencoder(object):
         return pred
 
     def create_csv(self,x,pred,cancers,max_patients):
+        x_arr = x.get_value()
         all_strings = []
-        for inp in x:
-            s = cancers[cancers.index(inp[0])]+","
+        for i in xrange(len(x_arr)):
+            single_str = []
+            inp = x_arr[i]
+            c_idx = int(round(inp[0]*len(cancers)))
+            single_str.append(cancers[c_idx])
             if inp[1]==0.0:
-                s = s + 'Female,'
+                single_str.append('Female')
             elif inp[1]==1.0:
-                s = s + 'Male,'
+                single_str.append('Male')
+
+            if inp[2]==0.0:
+                single_str.append('Incidence')
+            elif inp[2]==1.0:
+                single_str.append('Mortality')
 
             max_pat_val = self.get_correct_max_pat(inp,max_patients)
 
-            for p_in in pred:
-                for p in p_in:
-                    tmp = int(p*max_pat_val)
-                    s = s + tmp + ","
+            for j in xrange(len(pred[0][i])):
+                p = pred[0][i][j]
+                tmp = int(round(p*max_pat_val))
+                single_str.append(str(tmp))
 
-            all_strings.append(s)
+
+            all_strings.append(single_str)
+
+        with open('results.csv', 'wb') as f:
+            writer = csv.writer(f)
+            writer.writerows(all_strings)
 
     def mkdir_if_not_exist(self, name):
         if not os.path.exists(name):
@@ -479,25 +494,25 @@ if __name__ == '__main__':
     else:
         lam = 0.0
         hid = [100,100,100]
-        pre_ep = 20
-        fine_ep = 20
+        pre_ep = 30
+        fine_ep = 300
         b_size = 10
         data_dir = 'data.pkl'
         dropout = False
         drop_rates = [0.2,0.2,0.2,0.2]
-        corr_level = [0.1, 0.1, 0.1]
-        denoising=False
+        corr_level = [0.01, 0.01, 0.01]
+        denoising = False
         beta = 0.2
         rho = 0.2
 
     sae = StackedAutoencoder(hidden_size=hid, batch_size=b_size, corruption_levels=corr_level,dropout=dropout,drop_rates=drop_rates)
     all_data = sae.load_data(data_dir)
     max_patients = sae.load_max_pat('max_patients.pkl')
-    #pred_ins = sae.load_pred_ins('pred_ins.pkl')
-    #cancer_data = sae.load_cancer_data('cancers.pkl')
+    pred_ins = sae.load_pred_ins('pred_ins.pkl')
+    cancer_data = sae.load_cancer_data('cancers.pkl')
     sae.train_model(datasets=all_data, pre_epochs=pre_ep, fine_epochs=fine_ep, batch_size=sae.batch_size, lam=lam, beta=beta, rho=rho, denoising=denoising)
     sae.test_model(all_data[2][0],all_data[2][1],batch_size=sae.batch_size,max_pat=max_patients)
-    #pred_vals = sae.predict()
-    #sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients)
+    pred_vals = sae.predict_val(pred_ins)
+    sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients)
     #max_inp = sae.get_input_threshold(all_data[0][0])
     #sae.visualize_hidden(max_inp)
