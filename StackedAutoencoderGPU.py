@@ -2,7 +2,7 @@ __author__ = 'Thushan Ganegedara'
 
 import numpy as np
 from SparseAutoencoderGPU import SparseAutoencoder
-from SoftmaxClassifierGPU import SoftmaxClassifier
+from OutputLayerGPU import OutputLayer
 
 from scipy import optimize
 from scipy import misc
@@ -59,7 +59,7 @@ class StackedAutoencoder(object):
         self.cost_fn_names = ['sqr_err', 'neg_log']
 
         self.x = T.matrix('x')  #store the inputs
-        self.y = T.ivector('y') #store the labels for the corresponding inputs
+        self.y = T.matrix('y') #store the labels for the corresponding inputs
 
         self.fine_cost = T.dscalar('fine_cost') #fine tuning cost
         self.error = T.dscalar('test_error')    #test error value
@@ -109,7 +109,7 @@ class StackedAutoencoder(object):
         self.sa_activations_train.append(a2_train)
         self.sa_activations_test.append(a2_test)
 
-        self.softmax = SoftmaxClassifier(n_inputs=self.h_sizes[-1], n_outputs=self.o_size,
+        self.softmax = OutputLayer(n_inputs=self.h_sizes[-1], n_outputs=self.o_size,
                                          x_train=self.sa_activations_train[-1], x_test = self.sa_activations_test[-1],
                                          y=self.y, dropout=self.dropout, dropout_rate=self.drop_rates[-1])
         self.lam_fine_tune = T.scalar('lam')
@@ -119,15 +119,16 @@ class StackedAutoencoder(object):
 
         #measure test performance
         self.error = self.softmax.get_error(self.y)
+        self.predict = self.softmax.get_output()
 
 
     def load_data(self,file_path='data.pkl'):
 
-        f = gzip.open(file_path, 'rb')
-        all_ins,all_outs = cPickle.load(f)
-        train_set = [all_ins[0:2000],all_outs[0:2000]]
-        valid_set = [all_ins[2000:2400],all_outs[2000:2400]]
-        test_set = [all_ins[2400:2940],all_outs[2400:2940]]
+        f = open(file_path, 'rb')
+        all_ins,all_outs,all_v_in,all_v_out,all_t_in,all_t_out = cPickle.load(f)
+        train_set = [all_ins,all_outs]
+        valid_set = [all_v_in,all_v_out]
+        test_set = [all_t_in,all_t_out]
         f.close()
 
 
@@ -136,7 +137,7 @@ class StackedAutoencoder(object):
             shared_x = shared(value=np.asarray(data_x,dtype=config.floatX),borrow=True)
             shared_y = shared(value=np.asarray(data_y,dtype=config.floatX),borrow=True)
 
-            return shared_x,T.cast(shared_y,'int32')
+            return shared_x,shared_y
 
 
         train_x,train_y = get_shared_data(train_set)
@@ -260,12 +261,13 @@ class StackedAutoencoder(object):
 
         fine_tune_fn,valid_model = self.fine_tuning(datasets,batch_size=self.batch_size,fine_lr=fine_lr)
 
+
         #########################################################################
         #####                         Early-Stopping                        #####
         #########################################################################
         patience = 10 * n_train_batches # look at this many examples
         patience_increase = 2.
-        improvement_threshold = 0.995
+        improvement_threshold = 1.25
         #validation frequency - the number of minibatches to go through before checking validation set
         validation_freq = min(n_train_batches,patience/2)
 
@@ -322,7 +324,7 @@ class StackedAutoencoder(object):
 
         #no update parameters, so this just returns the values it calculate
         #without objetvie function minimization
-        test_fn = function(inputs=[index], outputs=[self.error], givens={
+        test_fn = function(inputs=[index], outputs=[self.error,self.y,self.predict], givens={
             self.x: test_set_x[
                 index * batch_size: (index + 1) * batch_size
             ],
@@ -332,9 +334,22 @@ class StackedAutoencoder(object):
         }, name='test')
 
         e=[]
+        pred_vals = [];
+        act_vals = [];
         for batch_index in xrange(n_test_batches):
-            err = test_fn(batch_index)
+            err,act,pred = test_fn(batch_index)
             e.append(err)
+            #pred_vals.append(pred)
+            for p in pred:
+                print p[0],
+            print ""
+
+            for a in act:
+                print a[0],
+            print ""
+
+            #act_vals.append(act)
+            #print pred,',',act
 
         print 'Test Error %f ' % np.mean(e)
 
@@ -500,16 +515,16 @@ if __name__ == '__main__':
     #when I run in Pycharm
     else:
         lam = 0.0
-        hid = [225,225,225]
+        hid = [100,100,100]
         pre_ep = 20
-        fine_ep = 75
-        b_size = 100
+        fine_ep = 150
+        b_size = 10
         data_dir = 'data.pkl'
         dropout = False
         drop_rates = [0.2,0.2,0.2,0.2]
-        corr_level = [0.3, 0.3, 0.3]
-        denoising=True
-        beta = 0.0
+        corr_level = [0.1, 0.1, 0.1]
+        denoising=False
+        beta = 0.2
         rho = 0.2
     sae = StackedAutoencoder(hidden_size=hid, batch_size=b_size, corruption_levels=corr_level,dropout=dropout,drop_rates=drop_rates)
     all_data = sae.load_data(data_dir)

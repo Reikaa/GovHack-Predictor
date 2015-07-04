@@ -38,7 +38,7 @@ class OutputLayer(object):
         #Remember! These are symbolic experessions.
         self.a_train = self.forward_pass(input=self.x_train, training=True)
         self.a_test = self.forward_pass(input=self.x_test, training=False)
-        self.pred = T.argmax(self.a_test, axis=1)
+        self.pred = self.a_test
 
         self.theta = [self.W1,self.b1]
 
@@ -64,8 +64,8 @@ class OutputLayer(object):
         if cost_fn=='sqr_err':
             cost = 0
         elif cost_fn=='neg_log':
-            cost = -T.mean(T.log(self.a_train[T.arange(self.y.shape[0]), self.y])) + \
-                   (lam/2) * T.sum(T.sum(self.W1**2,axis=1))
+            L = - T.sum(self.y * T.log(self.a_train) + (1 - self.y) * T.log(1 - self.a_train), axis=1)
+            cost = T.mean(L) + (lam/2)*T.sum(T.sum(self.W1**2,axis=1))
 
         return cost
 
@@ -73,4 +73,7 @@ class OutputLayer(object):
         return self.theta
 
     def get_error(self,y):
-        return T.mean(T.neq(self.pred, y))
+        return T.mean(T.sum((self.pred-y)**2))
+
+    def get_output(self):
+        return self.pred
