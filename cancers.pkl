@@ -1,0 +1,72 @@
+(lp0
+S'Acute lymphoblastic leukaemia'
+p1
+aS'Acute myeloid leukaemia'
+p2
+aS'Anal cancer'
+p3
+aS'Bladder cancer'
+p4
+aS'Bowel cancer'
+p5
+aS'Brain cancer'
+p6
+aS'Breast cancer'
+p7
+aS'Cervical cancer'
+p8
+aS'Chronic lymphocytic leukaemia'
+p9
+aS'Chronic myeloid leukaemia'
+p10
+aS'Colon cancer'
+p11
+aS'Head and neck excluding lip'
+p12
+aS'Head and neck including lip'
+p13
+aS'Hodgkin lymphoma'
+p14
+aS'Kidney cancer'
+p15
+aS'Laryngeal cancer'
+p16
+aS'Liver cancer'
+p17
+aS'Lung cancer'
+p18
+aS'Melanoma of the skin'
+p19
+aS'Mesothelioma'
+p20
+aS'Myeloma'
+p21
+aS'Non-Hodgkin lymphoma'
+p22
+aS'Non-melanoma skin cancer, all types'
+p23
+aS'Non-melanoma skin cancer, rare types'
+p24
+aS'Oesophageal cancer'
+p25
+aS'Ovarian cancer'
+p26
+aS'Pancreatic cancer'
+p27
+aS'Prostate cancer'
+p28
+aS'Rectal cancer'
+p29
+aS'Stomach cancer'
+p30
+aS'Testicular cancer'
+p31
+aS'Thyroid cancer'
+p32
+aS'Tongue cancer'
+p33
+aS'Unknown primary site'
+p34
+aS'Uterine cancer'
+p35
+a.

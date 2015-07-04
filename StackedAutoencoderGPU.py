@@ -30,7 +30,7 @@ except ImportError:
 class StackedAutoencoder(object):
 
 
-    def __init__(self,in_size=8, hidden_size = [500, 500, 250], out_size = 3, batch_size = 10, corruption_levels=[0.1, 0.1, 0.1],dropout=True,drop_rates=[0.5,0.2,0.2]):
+    def __init__(self,in_size=9, hidden_size = [500, 500, 250], out_size = 5, batch_size = 10, corruption_levels=[0.1, 0.1, 0.1],dropout=True,drop_rates=[0.5,0.2,0.2]):
         self.i_size = in_size
         self.h_sizes = hidden_size
         self.o_size = out_size
@@ -121,6 +121,22 @@ class StackedAutoencoder(object):
         self.error = self.softmax.get_error(self.y)
         self.predict = self.softmax.get_output()
 
+
+    def load_max_pat(self,file_path):
+        f = open(file_path, 'rb')
+        max_patients = cPickle.load(f)
+
+        return max_patients
+
+    def load_pred_ins(self,file_path):
+        f = open(file_path, 'rb')
+        pred_ins = cPickle.load(f)
+        return pred_ins
+
+    def load_cancer_data(self,file_path):
+        f = open(file_path,'rb')
+        cancer_data = cPickle.load(f)
+        return cancer_data
 
     def load_data(self,file_path='data.pkl'):
 
@@ -314,8 +330,14 @@ class StackedAutoencoder(object):
                 done_looping = True
                 break
 
+    def get_correct_max_pat(self,x,max_pat):
+        for p in max_pat:
+            if p[0]==x[0] and p[1]==x[1]:
+                return p[2]
 
-    def test_model(self,test_set_x,test_set_y,batch_size= 1):
+        return -1
+
+    def test_model(self,test_set_x,test_set_y,batch_size= 1,max_pat=None):
 
         print '\nTesting the model...'
         n_test_batches = test_set_x.get_value(borrow=True).shape[0] / batch_size
@@ -324,7 +346,7 @@ class StackedAutoencoder(object):
 
         #no update parameters, so this just returns the values it calculate
         #without objetvie function minimization
-        test_fn = function(inputs=[index], outputs=[self.error,self.y,self.predict], givens={
+        test_fn = function(inputs=[index], outputs=[self.error,self.y,self.predict,self.x], givens={
             self.x: test_set_x[
                 index * batch_size: (index + 1) * batch_size
             ],
@@ -334,18 +356,25 @@ class StackedAutoencoder(object):
         }, name='test')
 
         e=[]
-        pred_vals = [];
-        act_vals = [];
+        pred_vals = []
+        act_vals = []
         for batch_index in xrange(n_test_batches):
-            err,act,pred = test_fn(batch_index)
+            err,act,pred,x = test_fn(batch_index)
             e.append(err)
+
             #pred_vals.append(pred)
+            i=0
             for p in pred:
-                print p[0],
+                max_pat_val = self.get_correct_max_pat(x[i],max_pat)
+                print int(p[0]*max_pat_val),
+                i=i+1
             print ""
 
+            i=0
             for a in act:
-                print a[0],
+                max_pat_val = self.get_correct_max_pat(x[i],max_pat)
+                print int(a[0]*max_pat_val),
+                i=i+1
             print ""
 
             #act_vals.append(act)
@@ -353,110 +382,44 @@ class StackedAutoencoder(object):
 
         print 'Test Error %f ' % np.mean(e)
 
+    def predict(self,pred_ins):
+        index = T.lscalar('index')
+
+        #no update parameters, so this just returns the values it calculate
+        #without objetvie function minimization
+        pred_fn = function(inputs=[], outputs=[self.predict], givens={
+            self.x: pred_ins
+
+        }, name='predict')
+
+        e=[]
+        pred_vals = []
+        act_vals = []
+        pred = pred_fn()
+
+        return pred
+
+    def create_csv(self,x,pred,cancers,max_patients):
+        all_strings = []
+        for inp in x:
+            s = cancers[cancers.index(inp[0])]+","
+            if inp[1]==0.0:
+                s = s + 'Female,'
+            elif inp[1]==1.0:
+                s = s + 'Male,'
+
+            max_pat_val = self.get_correct_max_pat(inp,max_patients)
+
+            for p_in in pred:
+                for p in p_in:
+                    tmp = int(p*max_pat_val)
+                    s = s + tmp + ","
+
+            all_strings.append(s)
+
     def mkdir_if_not_exist(self, name):
         if not os.path.exists(name):
             os.makedirs(name)
-
-    def visualize_hidden(self,threshold):
-        print '\nSaving hidden layer filters...\n'
-
-        #Visualizing 1st hidden layer
-        f_name = 'my_filter_layer_0.png'
-        im_side = sqrt(self.i_size)
-        im_count = int(sqrt(self.h_sizes[0]))
-        image = Image.fromarray(tile_raster_images(
-        X=self.sa_layers[0].W1.get_value(borrow=True).T,
-        img_shape=(im_side, im_side), tile_shape=(im_count, im_count),
-        tile_spacing=(1, 1)))
-        image.save(f_name)
-
-        index = T.lscalar('index')
-        max_inputs =[]
-        #Higher level hidden layers
-        for i in xrange(1,self.n_layers):
-            print "Calculating features for higher layers\n"
-            inp = np.random.random_sample((self.i_size,))*0.02
-            inp = np.asarray(inp,dtype=config.floatX)
-            input = shared(value=inp, name='input',borrow=True)
-
-            max_ins = self.get_max_activations(input,threshold,i)
-
-            f_name = 'my_filter_layer_'+str(i)+'.png'
-            im_side = sqrt(self.i_size)
-            im_count = int(sqrt(self.h_sizes[i]))
-            image = Image.fromarray(tile_raster_images(
-                X=max_ins,
-                img_shape=(im_side, im_side), tile_shape=(im_count, im_count),
-                tile_spacing=(1, 1)))
-            image.save(f_name)
-
-
-    def get_input_threshold(self,train_set_x):
-        max_input = np.max(np.sqrt(np.sum(train_set_x.get_value()**2,axis=1)))
-        return max_input*0.75
-
-
-    def sigmoid(self, x):
-        return 1.0 / (1.0 + np.exp(-x))
-
-    def cost(self,input,theta_as_blocks,layer_idx,index):
-
-        layer_input = input
-        for i in xrange(layer_idx):
-            a = self.sigmoid(np.dot(layer_input,theta_as_blocks[i][0]) + theta_as_blocks[i][1])
-            layer_input = a
-
-        cost = self.sigmoid(np.dot(layer_input,theta_as_blocks[layer_idx][0]) + theta_as_blocks[layer_idx][1])[index]
-        #print "         Cost for node %i in layer %i is %f" %(index,layer_idx,cost)
-        return -cost
-
-    def cost_prime(self, input, theta_as_blocks, layer_idx, index):
-        prime = optimize.approx_fprime(input, self.cost, 0.00000001, theta_as_blocks, layer_idx, index)
-        return prime
-
-    def get_max_activations(self,input,threshold,layer_idx):
-
-        #constraint for x
-        def con_x_norm(x,threshold):
-            return threshold-LA.norm(x)
-        cons = {'type': 'ineq','fun': con_x_norm,'args': (threshold,)}
-
-        print 'Calculating max activations for layer %i...\n' % layer_idx
-
-        input_arr = input.get_value()
-        max_inputs = []
-
-        print 'Getting max activations for layer %i\n' % layer_idx
-        #creating the ndarray from symbolic theta
-        theta_as_blocks_arr = []
-
-        print 'Getting theta_as_blocks for layer %i' % layer_idx
-        for k in xrange(layer_idx+1):
-            print '     Getting thetas for layer %i' % k
-            theta_as_blocks_arr.append([self.thetas_as_blocks[k][0].get_value(),self.thetas_as_blocks[k][1].get_value()])
-
-        print '\nPerforming optimization (SLSQP) for layer %i...' % layer_idx
-
-        printed_50 = False
-        printed_90 = False
-        for j in xrange(self.h_sizes[layer_idx]):
-            #print '     Getting max input for node %i in layer %i' % (j, i)
-            init_val = input_arr
-            res = optimize.minimize(fun=self.cost, x0=init_val, args=(theta_as_blocks_arr,layer_idx,j),
-                                    jac=self.cost_prime, method='SLSQP', constraints=cons, options={'maxiter': 5})
-
-            if LA.norm(res.x) > threshold:
-                print '     Threshold exceeded node %i layer %i norm %f/%f' % (j, layer_idx, LA.norm(res.x), threshold)
-            max_inputs.append(res.x)
-
-            if j*1.0/self.h_sizes[layer_idx] > .9 and not printed_90:
-                print '     90% completed...'
-                printed_90 = True
-            elif j*1.0/self.h_sizes[layer_idx] > .5 and not printed_50:
-                print '     50% completed...'
-                printed_50 = True
-
-        return np.asarray(max_inputs)
 
 
 if __name__ == '__main__':
@@ -517,7 +480,7 @@ if __name__ == '__main__':
         lam = 0.0
         hid = [100,100,100]
         pre_ep = 20
-        fine_ep = 150
+        fine_ep = 2
         b_size = 10
         data_dir = 'data.pkl'
         dropout = False
@@ -526,9 +489,15 @@ if __name__ == '__main__':
         denoising=False
         beta = 0.2
         rho = 0.2
+
     sae = StackedAutoencoder(hidden_size=hid, batch_size=b_size, corruption_levels=corr_level,dropout=dropout,drop_rates=drop_rates)
     all_data = sae.load_data(data_dir)
+    max_patients = sae.load_max_pat('max_patients.pkl')
+    pred_ins = sae.load_pred_ins('pred_ins.pkl')
+    cancer_data = sae.load_cancer_data('cancers.pkl')
     sae.train_model(datasets=all_data, pre_epochs=pre_ep, fine_epochs=fine_ep, batch_size=sae.batch_size, lam=lam, beta=beta, rho=rho, denoising=denoising)
-    sae.test_model(all_data[2][0],all_data[2][1],batch_size=sae.batch_size)
+    sae.test_model(all_data[2][0],all_data[2][1],batch_size=sae.batch_size,max_pat=max_patients)
+    pred_vals = sae.predict()
+    sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients)
     #max_inp = sae.get_input_threshold(all_data[0][0])
     #sae.visualize_hidden(max_inp)
