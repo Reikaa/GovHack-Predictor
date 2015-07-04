@@ -82,12 +82,12 @@ class DataManipulation(object):
                         input.append(float(rows[k][i+j][23]))
 
                 for j in xrange(s):
-                    if max_patients >0.0:
+                    if max_patients>0.0:
                         output.append(float(rows[k][i+t+j][23])/max_patients)
                     else:
                         output.append(float(rows[k][i+t+j][23]))
 
-                if len(output)==0 or len(input)==0:
+                if len(output)<5 or len(input)<9:
                     print 'problem'
 
                 if i<len(rows[k])-t-s-10:

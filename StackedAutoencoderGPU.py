@@ -480,7 +480,7 @@ if __name__ == '__main__':
         lam = 0.0
         hid = [100,100,100]
         pre_ep = 20
-        fine_ep = 2
+        fine_ep = 20
         b_size = 10
         data_dir = 'data.pkl'
         dropout = False
@@ -493,11 +493,11 @@ if __name__ == '__main__':
     sae = StackedAutoencoder(hidden_size=hid, batch_size=b_size, corruption_levels=corr_level,dropout=dropout,drop_rates=drop_rates)
     all_data = sae.load_data(data_dir)
     max_patients = sae.load_max_pat('max_patients.pkl')
-    pred_ins = sae.load_pred_ins('pred_ins.pkl')
-    cancer_data = sae.load_cancer_data('cancers.pkl')
+    #pred_ins = sae.load_pred_ins('pred_ins.pkl')
+    #cancer_data = sae.load_cancer_data('cancers.pkl')
     sae.train_model(datasets=all_data, pre_epochs=pre_ep, fine_epochs=fine_ep, batch_size=sae.batch_size, lam=lam, beta=beta, rho=rho, denoising=denoising)
     sae.test_model(all_data[2][0],all_data[2][1],batch_size=sae.batch_size,max_pat=max_patients)
-    pred_vals = sae.predict()
-    sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients)
+    #pred_vals = sae.predict()
+    #sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients)
     #max_inp = sae.get_input_threshold(all_data[0][0])
     #sae.visualize_hidden(max_inp)
