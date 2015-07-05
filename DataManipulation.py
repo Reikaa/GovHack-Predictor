@@ -30,10 +30,11 @@ class DataManipulation(object):
                 if row[4]=='':
                     continue
 
+
                 if row[3] not in self.cancers:
                     self.cancers.append(row[3])
 
-                if not (row[1] == prev_gender or row[2] == prev_status) :
+                if not (row[1] == prev_gender and row[2] == prev_status) :
                     self.rows.append([])
 
                 self.rows[-1].append(row)
@@ -50,12 +51,17 @@ class DataManipulation(object):
 
     def get_input_vectors(self, rows, cancers, t, s):
 
-        all_inputs = []
-        all_outputs = []
+        all_train_ins = []
+        all_train_outs = []
         all_valid_ins = []
         all_valid_outs = []
         all_test_ins = []
         all_test_outs = []
+
+        pred_train_ins = []
+        pred_train_outs = []
+        pred_valid_ins = []
+        pred_valid_outs = []
 
         for k in xrange(len(rows)):
             max_patients = self.get_max_patients(rows[k])
@@ -88,34 +94,51 @@ class DataManipulation(object):
                     else:
                         output.append(float(rows[k][i+t+j][23]))
 
-                if len(output)<5 or len(input)<9:
-                    print 'problem'
+                num_valid = 3
+                num_test = 3
 
-                num_valid = 5
-                num_test = 10
+
                 if i<len(rows[k])-t-s-(num_valid+num_test):
-                    all_inputs.append(input)
+                    all_train_ins.append(input)
                 elif i<len(rows[k])-t-s-num_test:
                     all_valid_ins.append(input)
                 else:
                     all_test_ins.append(input)
 
+                if len(rows[k])-t-s-(num_valid+num_test)<0.:
+                    print 'problem'
+
                 if i<len(rows[k])-t-s-(num_valid+num_test):
-                    all_outputs.append(output)
+                    all_train_outs.append(output)
                 elif i<len(rows[k])-t-s-num_test:
                     all_valid_outs.append(output)
                 else:
                     all_test_outs.append(output)
 
-            self.max_pat.append([all_inputs[-1][0],all_inputs[-1][1],all_inputs[-1][2],max_patients])
-        print np.asarray(all_inputs).shape
-        print np.asarray(all_outputs).shape
+                if i<len(rows[k])-t-s-(num_valid):
+                    pred_train_ins.append(input)
+                else:
+                    pred_valid_ins.append(input)
+
+                if i<len(rows[k])-t-s-(num_valid):
+                    pred_train_outs.append(output)
+                else:
+                    pred_valid_outs.append(output)
+
+
+            self.max_pat.append([all_train_ins[-1][0],all_train_ins[-1][1],all_train_ins[-1][2],max_patients])
+
+        print np.asarray(all_train_ins).shape
+        print np.asarray(all_train_outs).shape
         print np.asarray(all_valid_ins).shape
         print np.asarray(all_valid_outs).shape
         print np.asarray(all_test_ins).shape
         print np.asarray(all_test_outs).shape
-
-        return [all_inputs,all_outputs,all_valid_ins,all_valid_outs,all_test_ins,all_test_outs]
+        print np.asarray(pred_train_ins).shape
+        print np.asarray(pred_train_outs).shape
+        print np.asarray(pred_valid_ins).shape
+        print np.asarray(pred_valid_outs).shape
+        return [all_train_ins,all_train_outs,all_valid_ins,all_valid_outs,all_test_ins,all_test_outs,pred_train_ins,pred_train_outs,pred_valid_ins,pred_valid_outs]
 
     def get_pred_inputs(self, rows, cancers, t):
         pred_inputs=[]
@@ -150,9 +173,12 @@ class DataManipulation(object):
 if __name__ == '__main__':
     d = DataManipulation()
     d.load_data()
-    [all_in,all_out,all_valid_in,all_valid_out,all_test_in,all_test_out] = d.get_input_vectors(d.rows,d.cancers,6,5)
-    pred_inputs = d.get_pred_inputs(d.rows,d.cancers,6)
+    num_prev_yrs = 5
+    [all_in,all_out,all_valid_in,all_valid_out,all_test_in,all_test_out,
+     pred_train_ins,pred_train_outs,pred_valid_ins,pred_valid_outs] = d.get_input_vectors(d.rows,d.cancers,num_prev_yrs,10)
+    pred_inputs = d.get_pred_inputs(d.rows,d.cancers,num_prev_yrs)
     pickle.dump([all_in,all_out,all_valid_in,all_valid_out,all_test_in,all_test_out], open("data.pkl", "wb"))
+    pickle.dump([pred_train_ins,pred_train_outs,pred_valid_ins,pred_valid_outs], open("data_pred.pkl", "wb"))
     pickle.dump(d.max_pat, open("max_patients.pkl","wb"))
     pickle.dump(pred_inputs, open("pred_ins.pkl","wb"))
     pickle.dump(d.cancers, open("cancers.pkl","wb"))

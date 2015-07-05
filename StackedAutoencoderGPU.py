@@ -30,7 +30,7 @@ except ImportError:
 class StackedAutoencoder(object):
 
 
-    def __init__(self,in_size=9, hidden_size = [500, 500, 250], out_size = 5, batch_size = 10, corruption_levels=[0.1, 0.1, 0.1],dropout=True,drop_rates=[0.5,0.2,0.2]):
+    def __init__(self,in_size=8, hidden_size = [500, 500, 250], out_size = 10, batch_size = 10, corruption_levels=[0.1, 0.1, 0.1],dropout=True,drop_rates=[0.5,0.2,0.2]):
         self.i_size = in_size
         self.h_sizes = hidden_size
         self.o_size = out_size
@@ -139,15 +139,20 @@ class StackedAutoencoder(object):
         cancer_data = cPickle.load(f)
         return cancer_data
 
-    def load_data(self,file_path='data.pkl'):
+    def load_data(self,file_path='data.pkl',make_predict=True):
 
         f = open(file_path, 'rb')
-        all_ins,all_outs,all_v_in,all_v_out,all_t_in,all_t_out = cPickle.load(f)
-        train_set = [all_ins,all_outs]
-        valid_set = [all_v_in,all_v_out]
-        test_set = [all_t_in,all_t_out]
-        f.close()
-
+        if not make_predict:
+            all_ins,all_outs,all_v_in,all_v_out,all_t_in,all_t_out = cPickle.load(f)
+            train_set = [all_ins,all_outs]
+            valid_set = [all_v_in,all_v_out]
+            test_set = [all_t_in,all_t_out]
+            f.close()
+        else:
+            all_ins,all_outs,all_v_in,all_v_out = cPickle.load(f)
+            train_set = [all_ins,all_outs]
+            valid_set = [all_v_in,all_v_out]
+            test_set = [all_v_in,all_v_out]
 
         def get_shared_data(data_xy):
             data_x,data_y = data_xy
@@ -338,7 +343,7 @@ class StackedAutoencoder(object):
 
         return -1
 
-    def test_model(self,test_set_x,test_set_y,batch_size= 1,max_pat=None):
+    def test_model(self,test_set_x,test_set_y,batch_size= 1,max_pat=None,cancers=None):
 
         print '\nTesting the model...'
         n_test_batches = test_set_x.get_value(borrow=True).shape[0] / batch_size
@@ -359,9 +364,34 @@ class StackedAutoencoder(object):
         e=[]
         pred_vals = []
         act_vals = []
+
+        errsAll = dict()
         for batch_index in xrange(n_test_batches):
             err,act,pred,x = test_fn(batch_index)
             e.append(err)
+
+            for p,a,x_i in zip(pred,act,x):
+                errsSingle = []
+                for p2,a2 in zip(p,a):
+                    max_pat_val = self.get_correct_max_pat(x_i,max_pat)
+                    diff = abs(p2-a2)
+                    if a2>0.0:
+                        errTmp = np.mean(diff/a2)
+                    else:
+                        errTmp = 0.0
+                    errsSingle.append(errTmp)
+
+                key = self.get_key(x_i,cancers)
+
+                if key not in errsAll:
+                    errsAll[key]=[errsSingle]
+                else:
+                    errPrev = errsAll[key]
+                    errPrev.append(errsSingle)
+                    errsAll[key] = errPrev
+
+
+                #if all(v == 0 for v in errsSingle):
 
             #pred_vals.append(pred)
             i=0
@@ -381,7 +411,32 @@ class StackedAutoencoder(object):
             #act_vals.append(act)
             #print pred,',',act
 
-        print 'Test Error %f ' % np.mean(e)
+        keys = []
+        errors = []
+        for k in errsAll:
+            keys.append(k)
+            tmp3 = errsAll.get(k)
+            tmp = np.asarray(errsAll.get(k))
+            errsForKey = np.mean(tmp*100,axis=0);
+            errors.append(errsForKey)
+            print 'Test Error for ', k, ": ", errsForKey
+
+        self.create_csv_errors(keys,errors)
+
+    def get_key(self,x,cancers):
+        c_idx = int(round(x[0]*len(cancers)))
+        s = cancers[c_idx]
+        if x[1]==1.0:
+            s = s + ",Male"
+        else:
+            s = s + ",Female"
+
+        if x[2]==1.0:
+            s = s + ",Mortality"
+        else:
+            s = s + ",Incidence"
+
+        return s
 
     def predict_val(self,pred_ins):
 
@@ -390,7 +445,6 @@ class StackedAutoencoder(object):
         #without objetvie function minimization
         pred_fn = function(inputs=[], outputs=[self.predict], givens={
             self.x: pred_ins
-
         }, name='predict')
 
         e=[]
@@ -400,9 +454,37 @@ class StackedAutoencoder(object):
 
         return pred
 
-    def create_csv(self,x,pred,cancers,max_patients):
+    def create_csv_errors(self,keys,errors):
+        all_strings = []
+        header = ['Cancer,Gender,Status,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020']
+        all_strings.append(header)
+
+        for (k,e) in zip(keys,errors):
+            single_str = []
+            single_str.extend(k.split(","))
+            for val in e:
+                single_str.append(str(val))
+
+            all_strings.append(single_str)
+
+        with open('errors.csv', 'wb') as f:
+            writer = csv.writer(f)
+            writer.writerows(all_strings)
+
+    def create_csv(self,x,pred,cancers,max_patients,num_in_years):
         x_arr = x.get_value()
         all_strings = []
+
+        header = []
+        header.append('Cancer')
+        header.append('Gender')
+        header.append('Status')
+        for yr in xrange(2006,2011):
+            header.append(str(yr))
+        for yr in xrange(2011,2021):
+            header.append(str(yr))
+        all_strings.append(header)
+
         for i in xrange(len(x_arr)):
             single_str = []
             inp = x_arr[i]
@@ -419,6 +501,9 @@ class StackedAutoencoder(object):
                 single_str.append('Mortality')
 
             max_pat_val = self.get_correct_max_pat(inp,max_patients)
+
+            for k in xrange(num_in_years):
+                single_str.append(str(inp[k+3]))
 
             for j in xrange(len(pred[0][i])):
                 p = pred[0][i][j]
@@ -493,26 +578,34 @@ if __name__ == '__main__':
     #when I run in Pycharm
     else:
         lam = 0.0
-        hid = [100,100,100]
+        hid = [225,225,225]
         pre_ep = 30
-        fine_ep = 300
+        fine_ep = 500
         b_size = 10
-        data_dir = 'data.pkl'
         dropout = False
         drop_rates = [0.2,0.2,0.2,0.2]
         corr_level = [0.01, 0.01, 0.01]
-        denoising = False
+        denoising = True
         beta = 0.2
         rho = 0.2
+        make_predict = False
+        if make_predict:
+            data_dir = 'data_pred.pkl'
+        else:
+            data_dir = 'data.pkl'
 
     sae = StackedAutoencoder(hidden_size=hid, batch_size=b_size, corruption_levels=corr_level,dropout=dropout,drop_rates=drop_rates)
-    all_data = sae.load_data(data_dir)
+    all_data = sae.load_data(data_dir,make_predict=make_predict)
     max_patients = sae.load_max_pat('max_patients.pkl')
     pred_ins = sae.load_pred_ins('pred_ins.pkl')
     cancer_data = sae.load_cancer_data('cancers.pkl')
     sae.train_model(datasets=all_data, pre_epochs=pre_ep, fine_epochs=fine_ep, batch_size=sae.batch_size, lam=lam, beta=beta, rho=rho, denoising=denoising)
-    sae.test_model(all_data[2][0],all_data[2][1],batch_size=sae.batch_size,max_pat=max_patients)
-    pred_vals = sae.predict_val(pred_ins)
-    sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients)
+
+    if not make_predict:
+        sae.test_model(all_data[2][0],all_data[2][1],batch_size=sae.batch_size,max_pat=max_patients,cancers=cancer_data)
+    else:
+        pred_vals = sae.predict_val(pred_ins)
+        sae.create_csv(pred_ins,pred_vals,cancer_data,max_patients,5)
+
     #max_inp = sae.get_input_threshold(all_data[0][0])
     #sae.visualize_hidden(max_inp)
